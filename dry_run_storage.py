@@ -1,0 +1,73 @@
+import asyncio
+import importlib
+import os
+import tempfile
+
+
+async def main():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        temp_db = os.path.join(temp_dir, "lavbot_dry_run.db")
+        os.environ["LAVENDER_MEMORY_DB"] = temp_db
+
+        memory = importlib.import_module("memory")
+        memory = importlib.reload(memory)
+
+        await memory.init_db()
+
+        created_tag = await memory.create_tag("Life Hack")
+        assert created_tag == "life hack"
+
+        first_note = await memory.add_note("Life hack keep your keys in the same tray every night")
+        second_note = await memory.add_note("A normal untagged note for testing")
+        assert first_note == 1
+        assert second_note == 2
+
+        tagged_notes = await memory.list_notes_by_tag("Life Hack")
+        tag_counts, untagged_count = await memory.list_tags_with_counts()
+        assert len(tagged_notes) == 1
+        assert tagged_notes[0][0] == 1
+        assert ("life hack", 1) in tag_counts
+        assert untagged_count == 1
+
+        memory_number = await memory.add_persona_memory("ally", "birthday is in september")
+        assert memory_number == 1
+        replaced = await memory.replace_persona_memory_by_text(
+            "ally",
+            "birthday is in september",
+            "birthday is in late september",
+        )
+        assert replaced is True
+        persona_memories = await memory.list_persona_memories("ally")
+        assert len(persona_memories) == 1
+        assert persona_memories[0][1] == "birthday is in late september"
+
+        moment_id = await memory.add_moment("Dry-run health analysis report")
+        moments = await memory.list_moments()
+        assert moment_id is not None
+        assert len(moments) == 1
+        assert moments[0][1] == "Dry-run health analysis report"
+
+        deleted_note = await memory.delete_note_by_number(1)
+        remaining_notes = await memory.list_notes()
+        assert deleted_note is True
+        assert len(remaining_notes) == 1
+        assert remaining_notes[0][0] == 1
+        assert remaining_notes[0][1] == "A normal untagged note for testing"
+
+        deleted_memory = await memory.delete_persona_memory("ally", 1)
+        assert deleted_memory is True
+        assert await memory.list_persona_memories("ally") == []
+
+        deleted_tag = await memory.delete_tag("Life Hack")
+        assert deleted_tag is True
+
+        print("Dry run passed:")
+        print("- tags can be created, counted, and deleted")
+        print("- notes are numbered, tagged by prefix, and renumber after deletion")
+        print("- persona memories can be added, replaced, listed, and deleted")
+        print("- moments can be stored and listed")
+        print(f"- temp database used: {temp_db}")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

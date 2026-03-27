@@ -1,0 +1,18 @@
+# Local database with tokens & user IDs
+user.db
+.env
+favorites.json
+self_image/
+
+# Runtime data
+lavender_images/
+lavender_memory/
+lavender_moments/
+lavuserdata/
+
+# Virtual environment
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
