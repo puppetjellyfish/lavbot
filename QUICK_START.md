@@ -55,7 +55,7 @@ The TUI provides a clean interface with:
 - Direct integration with Lavender's personality and memory
 
 ### Configuring users & tokens via the TUI
-The TUI uses a `user.db` file to store:
+The TUI uses `lavuserdata/user.db` to store:
 - Discord token (DiscordToken)
 - AI model settings (CHAT_MODEL, VISION_MODEL)
 - Allowed user IDs + personas (ally/muggy)
@@ -76,7 +76,7 @@ The TUI uses a `user.db` file to store:
 - `/bot status` — check if bot is running
 - `/clear` — clear the chat log
 
-The file `user.db` will be created automatically when you run the TUI.
+The file `lavuserdata/user.db` will be created automatically when you run the TUI.
 
 ## 👁️ Vision Features - Quick Demo
 
@@ -129,17 +129,22 @@ The file `user.db` will be created automatically when you run the TUI.
 
 ## 📊 Data Storage Locations
 
+All runtime data is stored under `lavuserdata/` inside the `lavbot` folder.
+
 New files created by Qwen:
 ```
-lavender_moments/
-  visual_moments.json      (all image analysis)
-  
-lavender_memory/
-  image_embeddings.json    (for clustering)
-  image_clusters.json      (cluster definitions)
-  
-lavender_images/           (actual image files)
+lavuserdata/
+   lavender_moments/
+      visual_moments.json      (all image analysis)
+
+   lavender_memory/
+      image_embeddings.json    (for clustering)
+      image_clusters.json      (cluster definitions)
+
+   lavender_images/           (actual image files)
 ```
+
+`lavuserdata/` is ignored by git, so local user data is not pushed to GitHub.
 
 ## 🆘 Common Issues & Fixes
 
@@ -156,7 +161,7 @@ lavender_images/           (actual image files)
 **Fix:** Check the image index with `!vmoments` first
 
 ### Issue: Visual moments file is empty
-**Fix:** Check permissions on `lavender_moments/` directory
+**Fix:** Check permissions on `lavuserdata/lavender_moments/` directory
 
 ## 💡 Pro Tips
 
@@ -204,7 +209,7 @@ When you send an image:
 1. Bot shows "typing..." indicator
 2. Qwen analyzes: description, emotion, themes, colors, subject
 3. Bot responds with poetic description
-4. Analysis saved to `lavender_moments/visual_moments.json`
+4. Analysis saved to `lavuserdata/lavender_moments/visual_moments.json`
 
 Example response:
 > "baa… I see a serene garden with soft golden light filtering through leaves. 
@@ -214,12 +219,12 @@ Example response:
 
 ```bash
 # Back up existing data
-copy lavender_moments lavender_moments_backup
-copy lavender_memory lavender_memory_backup
+copy lavuserdata\lavender_moments lavuserdata\lavender_moments_backup
+copy lavuserdata\lavender_memory lavuserdata\lavender_memory_backup
 
 # Clear embeddings to force recalculate
-del lavender_memory/image_embeddings.json
-del lavender_memory/image_clusters.json
+del lavuserdata\lavender_memory\image_embeddings.json
+del lavuserdata\lavender_memory\image_clusters.json
 
 # Re-run clustering (will be slow first time)
 # !vcluster

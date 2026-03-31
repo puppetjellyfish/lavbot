@@ -2,7 +2,7 @@ from pathlib import Path
 
 
 APP_ROOT = Path(__file__).resolve().parent
-USERDATA_ROOT = APP_ROOT.parent / "lavuserdata"
+USERDATA_ROOT = APP_ROOT / "lavuserdata"
 
 MEMORY_DIR = USERDATA_ROOT / "lavender_memory"
 MEMORY_BACKUPS_DIR = MEMORY_DIR / "backups"

@@ -48,9 +48,9 @@ class LavenderTUI(App):
 
     async def on_mount(self):
         chat = self.query_one("#chat", RichLog)
-        chat.write("Welcome to Lavender TUI!")
-        chat.write("Type /lav for commands.")
-        chat.write("You can set up users, tokens, and models via the TUI.")
+        chat.write("🌃")
+        chat.write("I am Lavbot, your personal discord companion vibe coded by Ally the elf. Github: https://github.com/Allyofthevalley")
+        chat.write("Type /lav to see what I can do ⇩")
 
     async def on_input_submitted(self, message: Input.Submitted):
         chat = self.query_one("#chat", RichLog)

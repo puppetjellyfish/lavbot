@@ -9,6 +9,8 @@ lavender_images/
 lavender_memory/
 lavender_moments/
 lavuserdata/
+/lavuserdata/
+/lavuserdata/**
 
 # Virtual environment
 .venv/
