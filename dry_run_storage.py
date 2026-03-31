@@ -42,10 +42,26 @@ async def main():
         assert persona_memories[0][1] == "birthday is in late september"
 
         moment_id = await memory.add_moment("Dry-run health analysis report")
+        moment_id2 = await memory.add_moment("Second moment for testing")
         moments = await memory.list_moments()
         assert moment_id is not None
-        assert len(moments) == 1
-        assert moments[0][1] == "Dry-run health analysis report"
+        assert moment_id2 is not None
+        assert len(moments) == 2
+        assert moments[0][1] == "Second moment for testing"
+        assert moments[1][1] == "Dry-run health analysis report"
+
+        count = await memory.count_moments()
+        assert count == 2
+
+        deleted_moment = await memory.delete_moment_by_number(1)
+        assert deleted_moment is True
+        remaining_moments = await memory.list_moments()
+        assert len(remaining_moments) == 1
+        assert remaining_moments[0][1] == "Dry-run health analysis report"
+
+        await memory.set_distillation("A calm day of coding and reflection.")
+        distillation = await memory.get_distillation()
+        assert distillation == "A calm day of coding and reflection."
 
         deleted_note = await memory.delete_note_by_number(1)
         remaining_notes = await memory.list_notes()
@@ -65,7 +81,8 @@ async def main():
         print("- tags can be created, counted, and deleted")
         print("- notes are numbered, tagged by prefix, and renumber after deletion")
         print("- persona memories can be added, replaced, listed, and deleted")
-        print("- moments can be stored and listed")
+        print("- moments can be stored, listed, counted, and deleted by number")
+        print("- distillation can be set and retrieved")
         print(f"- temp database used: {temp_db}")
 
 
