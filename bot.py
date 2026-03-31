@@ -17,12 +17,15 @@ from memory import (
 	add_notes_batch,
 	add_persona_memory,
 	clear_moments,
+	count_moments,
 	create_tag,
+	delete_moment_by_number,
 	delete_note_by_number,
 	delete_persona_memory,
 	delete_persona_memory_by_text,
 	delete_tag,
 	delete_untagged_notes,
+	get_distillation,
 	list_moments,
 	list_notes,
 	list_notes_by_tag,
@@ -31,10 +34,10 @@ from memory import (
 	list_tags_with_counts,
 	load_persona_memory_texts,
 	normalize_tag_name,
-	prune_expired_moments,
 	recent_moments,
 	replace_persona_memory_by_text,
 	search_notes,
+	set_distillation,
 )
 from personality import (
 	MAX_CUSTOM_PERSONALITY_CHARS,
@@ -55,6 +58,7 @@ IMAGE_FOLDER = str(IMAGES_DIR)
 FAVORITES_FILE = str(FAVORITES_PATH)
 DEFAULT_LOCATION = "Vancouver, BC, Canada"
 MAX_IMAGE_AGE_DAYS = 30
+DISTILLATION_THRESHOLD = 50
 NOTE_STOPWORDS = {
 	"a", "an", "the", "and", "or", "but", "if", "then", "than", "to", "for",
 	"of", "in", "on", "at", "by", "with", "from", "up", "about", "into", "over",
@@ -545,9 +549,40 @@ async def build_chat_prompt(user_message: str, user_id: int, memory_status: str 
 	)
 
 
+async def trigger_distillation() -> None:
+	"""Summarise all current moments into the distillation paragraph, then clear them."""
+	moments = await list_moments()
+	if not moments:
+		return
+
+	previous = await get_distillation()
+	moments_text = "\n".join(
+		f"- {m[1].replace(chr(10), ' ')}" for m in reversed(moments)
+	)
+
+	if previous:
+		prompt = (
+			f"Previous distillation:\n{previous}\n\n"
+			f"New moments:\n{moments_text}\n\n"
+			"Summarise the previous distillation and new moments into a single concise paragraph "
+			"capturing the most important patterns, topics, and emotional themes."
+		)
+	else:
+		prompt = (
+			f"Moments:\n{moments_text}\n\n"
+			"Summarise these moments into a single concise paragraph capturing the most important "
+			"patterns, topics, and emotional themes."
+		)
+
+	summary = safe_output(await ollama_chat(prompt))
+	summary = strip_memory_directives(summary).strip() or previous or ""
+	if summary:
+		await set_distillation(summary)
+	await clear_moments()
+
+
 async def process_chat_message(user_message: str, user_id: int) -> str:
 	update_last_interaction()
-	await prune_expired_moments()
 	await prune_old_unfavorited_images()
 
 	memory_status, direct_response, handled_memory_request = await process_explicit_memory_request(user_message, user_id)
@@ -567,6 +602,8 @@ async def process_chat_message(user_message: str, user_id: int) -> str:
 
 	moment_text = f"User ({who_is(user_id)}): {sanitize_input(user_message)}\nLavender: {clean_reply}"
 	await add_moment(moment_text)
+	if await count_moments() >= DISTILLATION_THRESHOLD:
+		await trigger_distillation()
 	return clean_reply
 
 
@@ -576,7 +613,6 @@ async def generate_response(user_message: str, user_id: int = 0) -> str:
 
 @bot.event
 async def on_ready():
-	await prune_expired_moments()
 	await prune_old_unfavorited_images()
 	bot_user = bot.user
 	if bot_user is None:
@@ -931,9 +967,9 @@ async def listmoments_command(ctx: commands.Context, page: int = 1):
 		return
 
 	lines = []
-	for moment_id, moment_text, created_at in rows:
+	for i, (_, moment_text, created_at) in enumerate(rows, start=1):
 		preview = moment_text.replace("\n", " ")[:160]
-		lines.append(f"**{moment_id}** ({created_at}) — {preview}")
+		lines.append(f"**{i}** ({created_at}) — {preview}")
 
 	per_page = 20
 	total = len(lines)
@@ -947,18 +983,36 @@ async def listmoments_command(ctx: commands.Context, page: int = 1):
 		await ctx.send(chunk)
 
 
+@bot.command(name="del_moment")
+async def del_moment_command(ctx: commands.Context, moment_number: int):
+	if not is_allowed_user(ctx.author.id):
+		return
+	deleted = await delete_moment_by_number(moment_number)
+	if deleted:
+		await ctx.send(f"baa~ moment {moment_number} deleted.")
+	else:
+		await ctx.send(f"baa… I couldn't find moment {moment_number}.")
+
+
+@bot.command(name="distillation")
+async def distillation_command(ctx: commands.Context):
+	if not is_allowed_user(ctx.author.id):
+		return
+	content = await get_distillation()
+	if content:
+		await ctx.send(f"**Distillation:**\n{content}")
+	else:
+		await ctx.send("baa… no distillation yet. It forms once 50 moments have accumulated.")
+
+
 @bot.command(name="prune")
 async def prune_command(ctx: commands.Context):
 	if not is_allowed_user(ctx.author.id):
 		return
-	deleted_moments = await clear_moments()
 	deleted_images = await prune_old_unfavorited_images(delete_all_unfavorited=True)
-	deleted_untagged = await delete_untagged_notes()
 	await ctx.send(
 		"baa… pruning complete!\n"
-		f"- Deleted moments: {deleted_moments}\n"
-		f"- Deleted unfavourited pictures: {deleted_images}\n"
-		f"- Deleted untagged notes: {deleted_untagged}"
+		f"- Deleted unfavourited pictures: {deleted_images}"
 	)
 
 
@@ -1077,8 +1131,10 @@ async def guji_command(ctx: commands.Context):
 		"- `!list_tags` — list tags and note counts\n\n"
 		"🧠 **Short-Term Memory**\n"
 		"- `!analyze_history <limit>` — analyze recent messages and save the report as a moment\n"
-		"- `!listmoments <page>` — list recent moments\n"
-		"- `!prune` — delete all moments and all unfavourited pictures immediately\n\n"
+		"- `!listmoments <page>` — list moments (newest first, numbered)\n"
+		"- `!del_moment <number>` — delete a moment by its number\n"
+		"- `!distillation` — show the distillation paragraph (formed after every 50 moments)\n"
+		"- `!prune` — delete all unfavourited pictures immediately\n\n"
 		"📷 **Images**\n"
 		"- send an image — I'll save it with an ordered filename and describe it\n"
 		"- `!listpics <page>` — list saved images\n"
@@ -1121,6 +1177,12 @@ async def ver_command(ctx: commands.Context):
 		return
 	ver_text = (
 		"CURRENT VERSION\n\n"
+		"3/31/2026 Lavbot v4.1 — MOMENTS DISTILLATION\n"
+		"- Moments are no longer auto-deleted; they persist until manually removed\n"
+		"- Added !del_moment <number> to delete a specific moment by its numbered position\n"
+		"- Added !distillation to view the distillation paragraph\n"
+		"- Every 50 moments are automatically summarised into the distillation paragraph\n"
+		"- !prune now only deletes unfavourited pictures (no longer clears moments or untagged notes)\n\n"
 		"3/26/2026 Lavbot v4.0 — MEMORY REBUILD, QUICKSTART, AND DRY-RUN\n"
 		"- Rebuilt notes, tags, persona memory, and short-term moments around a clean storage layer\n"
 		"- Added deterministic handling for explicit persona-memory edits like remember/change/forget\n"

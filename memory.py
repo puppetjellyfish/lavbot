@@ -122,6 +122,15 @@ async def init_db():
 			)
 			"""
 		)
+		await db.execute(
+			"""
+			CREATE TABLE IF NOT EXISTS distillation (
+				id INTEGER PRIMARY KEY CHECK (id = 1),
+				content TEXT NOT NULL,
+				updated_at TEXT NOT NULL
+			)
+			"""
+		)
 
 		await db.execute("DROP TABLE IF EXISTS memories")
 		await db.execute("DROP TABLE IF EXISTS image_memories")
@@ -393,7 +402,6 @@ async def add_moment(moment_text: str, created_at: str = None) -> Optional[int]:
 	if not text:
 		return None
 
-	await prune_expired_moments()
 	async with aiosqlite.connect(DB_PATH) as db:
 		cursor = await db.execute(
 			"INSERT INTO moments (moment_text, created_at) VALUES (?, ?)",
@@ -404,7 +412,6 @@ async def add_moment(moment_text: str, created_at: str = None) -> Optional[int]:
 
 
 async def list_moments() -> List[Tuple[int, str, str]]:
-	await prune_expired_moments()
 	async with aiosqlite.connect(DB_PATH) as db:
 		cursor = await db.execute(
 			"SELECT id, moment_text, created_at FROM moments ORDER BY id DESC"
@@ -433,6 +440,42 @@ async def clear_moments() -> int:
 		cursor = await db.execute("DELETE FROM moments")
 		await db.commit()
 		return cursor.rowcount
+
+
+async def count_moments() -> int:
+	async with aiosqlite.connect(DB_PATH) as db:
+		cursor = await db.execute("SELECT COUNT(*) FROM moments")
+		row = await cursor.fetchone()
+		return int(row[0])
+
+
+async def delete_moment_by_number(moment_number: int) -> bool:
+	"""Delete a moment by its 1-based display position (1 = newest)."""
+	async with aiosqlite.connect(DB_PATH) as db:
+		cursor = await db.execute("SELECT id FROM moments ORDER BY id DESC")
+		rows = await cursor.fetchall()
+		if moment_number < 1 or moment_number > len(rows):
+			return False
+		target_id = rows[moment_number - 1][0]
+		cursor = await db.execute("DELETE FROM moments WHERE id = ?", (target_id,))
+		await db.commit()
+		return cursor.rowcount > 0
+
+
+async def get_distillation() -> Optional[str]:
+	async with aiosqlite.connect(DB_PATH) as db:
+		cursor = await db.execute("SELECT content FROM distillation WHERE id = 1")
+		row = await cursor.fetchone()
+		return row[0] if row else None
+
+
+async def set_distillation(content: str) -> None:
+	async with aiosqlite.connect(DB_PATH) as db:
+		await db.execute(
+			"INSERT OR REPLACE INTO distillation (id, content, updated_at) VALUES (1, ?, ?)",
+			(content, datetime.now().strftime("%Y-%m-%d %H:%M:%S")),
+		)
+		await db.commit()
 
 
 try:
