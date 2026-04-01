@@ -9,6 +9,16 @@
 
 "VERSION UPDATES \n\n"
 
+  "3/31/2026 Lavbot v4.2 — SECURITY AUDIT TOOLS 🛡️\n"
+  "- **NEW**: `!security_audit` command for comprehensive security testing\n"
+  "- **NEW**: `/security` TUI commands for local security audits\n"
+  "- **NEW**: Integrated pip-audit, bandit, and safety checks\n"
+  "- **NEW**: `run_pip_audit()`, `run_bandit()`, `run_safety_check()` functions in security module\n"
+  "- **NEW**: `run_full_security_audit()` generates comprehensive audit reports\n"
+  "- **DOCS**: Updated help_text.md, QUICK_START.md, and versionlog with security features\n"
+  "- **DEPS**: Optional security tools: pip-audit, bandit, safety (install via pip)\n"
+  "- **FEATURE**: All audit tools have graceful error handling and virtual env support\n\n"
+
   "3/26/2026 Lavbot v4.0 — MEMORY REBUILD, QUICKSTART, AND DRY-RUN\n"
   "- **NEW**: Rebuilt notes, tags, persona memory, and short-term moments around a clean storage layer\n"
   "- **NEW**: Deterministic explicit memory editing for remember/change/forget requests\n"

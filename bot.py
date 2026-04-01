@@ -46,7 +46,7 @@ from personality import (
 	personality_for,
 	set_custom_personality_prompt,
 )
-from security import safe_output, sanitize_input
+from security import safe_output, sanitize_input, run_pip_audit, run_bandit, run_safety_check, run_full_security_audit
 from tools.vision import ask_ollama_vision
 from user_db import get_persona_for_user, get_setting, set_setting
 
@@ -1148,6 +1148,8 @@ async def guji_command(ctx: commands.Context):
 		"- `!ping` — check if I'm awake\n"
 		"- `!guji` — show this help menu\n"
 		"- `!ver` — show version changes\n"
+		"- `!security_audit full` — run full security audit (pip-audit, bandit, safety)\n"
+		"- `!security_audit <type>` — run specific audit (pip-audit, bandit, safety)\n"
 		"- `dry_run_commands.py` — verify note/tag and memory parsing from the terminal\n"
 	)
 	await ctx.send(help_text)
@@ -1191,6 +1193,54 @@ async def ver_command(ctx: commands.Context):
 		"- Updated help text and version history for the new Lavbot 4.0 workflow\n"
 	)
 	await ctx.send(ver_text)
+
+
+@bot.command(name="security_audit")
+async def security_audit_command(ctx: commands.Context, audit_type: str = "full"):
+	"""Run security audits on the bot dependencies and code."""
+	if not is_allowed_user(ctx.author.id):
+		return
+	
+	audit_type = audit_type.lower().strip()
+	
+	if audit_type == "full":
+		await ctx.send("🛡️ Running full security audit... (this may take a minute)")
+		async with ctx.typing():
+			report = await run_full_security_audit()
+		
+		# Split report into chunks to avoid Discord's 2000 char limit
+		for chunk in paginate_lines("Security Audit Report", report.split('\n')):
+			await ctx.send(chunk)
+		return
+	
+	elif audit_type == "pip-audit":
+		await ctx.send("🔍 Running pip-audit (checking for vulnerable dependencies)...")
+		async with ctx.typing():
+			result = await run_pip_audit()
+		
+		for chunk in paginate_lines("Pip Audit Results", result.split('\n')):
+			await ctx.send(chunk)
+		return
+	
+	elif audit_type == "bandit":
+		await ctx.send("🔍 Running bandit (checking for security issues in code)...")
+		async with ctx.typing():
+			result = await run_bandit()
+		
+		for chunk in paginate_lines("Bandit Results", result.split('\n')):
+			await ctx.send(chunk)
+		return
+	
+	elif audit_type == "safety":
+		await ctx.send("🔍 Running safety check (checking pip packages for vulnerabilities)...")
+		async with ctx.typing():
+			result = await run_safety_check()
+		
+		for chunk in paginate_lines("Safety Check Results", result.split('\n')):
+			await ctx.send(chunk)
+		return
+	
+	await ctx.send("Usage: `!security_audit full | !security_audit pip-audit | !security_audit bandit | !security_audit safety`")
 
 
 if __name__ == "__main__":

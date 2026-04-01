@@ -27,6 +27,7 @@ from personality import (
     get_custom_personality_prompt,
     set_custom_personality_prompt,
 )
+from security import run_pip_audit, run_bandit, run_safety_check, run_full_security_audit
 
 ensure_userdata_dirs()
 
@@ -120,6 +121,10 @@ class LavenderTUI(App):
             chat.write("/bot start — start the Discord bot")
             chat.write("/bot stop — stop the Discord bot")
             chat.write("/bot status — check bot status")
+            chat.write("/security audit — run full security audit (pip-audit, bandit, safety)")
+            chat.write("/security pip-audit — check for vulnerable dependencies")
+            chat.write("/security bandit — check for security issues in code")
+            chat.write("/security safety — check pip packages for vulnerabilities")
             chat.write("/clear — clear chat log")
             chat.write("")
             chat.write("Danger Zone:")
@@ -395,6 +400,44 @@ class LavenderTUI(App):
                 return
 
             chat.write(f"Usage: /ollama show | /ollama set host <v> | /ollama set port <v> | /ollama reset")
+            return
+
+        if cmd == "/security":
+            if len(parts) < 2:
+                chat.write("Usage: /security audit | /security pip-audit | /security bandit | /security safety")
+                return
+            
+            sub = parts[1].lower()
+            
+            if sub == "audit":
+                chat.write("🛡️ Running full security audit (this may take a minute)...")
+                report = await run_full_security_audit()
+                for line in report.split('\n'):
+                    chat.write(line)
+                return
+            
+            elif sub == "pip-audit":
+                chat.write("🔍 Running pip-audit (checking for vulnerable dependencies)...")
+                result = await run_pip_audit()
+                for line in result.split('\n'):
+                    chat.write(line)
+                return
+            
+            elif sub == "bandit":
+                chat.write("🔍 Running bandit (checking for security issues in code)...")
+                result = await run_bandit()
+                for line in result.split('\n'):
+                    chat.write(line)
+                return
+            
+            elif sub == "safety":
+                chat.write("🔍 Running safety check (checking pip packages for vulnerabilities)...")
+                result = await run_safety_check()
+                for line in result.split('\n'):
+                    chat.write(line)
+                return
+            
+            chat.write("Usage: /security audit | /security pip-audit | /security bandit | /security safety")
             return
 
         if cmd == "/reset":

@@ -18,6 +18,14 @@ Or install manually:
 pip install numpy discord.py aiosqlite requests python-dotenv textual
 ```
 
+### 2b. (Optional) Install Security Audit Tools
+For the `!security_audit` command and `/security` commands:
+```bash
+pip install pip-audit bandit safety
+```
+
+These are optional - the bot will gracefully handle them if not installed.
+
 ### 3. Verify Ollama is Accessible
 Test that Qwen can be reached:
 ```bash
@@ -74,6 +82,10 @@ The TUI uses `lavuserdata/user.db` to store:
 - `/bot start` — start the Discord bot
 - `/bot stop` — stop the Discord bot
 - `/bot status` — check if bot is running
+- `/security audit` — run full security audit (pip-audit, bandit, safety)
+- `/security pip-audit` — check for vulnerable dependencies
+- `/security bandit` — scan code for security issues
+- `/security safety` — check pip packages for vulnerabilities
 - `/clear` — clear the chat log
 
 The file `lavuserdata/user.db` will be created automatically when you run the TUI.
