@@ -208,82 +208,106 @@ Otherwise, just reply normally and cutely."""
 # Security Audit Functions
 # ============================================================================
 
+def _missing_audit_module_message(output: str, module_name: str, package_name: str) -> str | None:
+    """Return a friendly install hint when an optional audit tool is missing."""
+    if not output:
+        return None
+    missing_patterns = [
+        f"No module named {module_name}",
+        f"No module named '{module_name}'",
+        f'No module named "{module_name}"',
+    ]
+    if any(pattern in output for pattern in missing_patterns):
+        return (
+            f"⚠️ {package_name} is not installed in the current Python environment. "
+            f"Install with: pip install {package_name}"
+        )
+    return None
+
+
 async def run_pip_audit() -> str:
-	"""Run pip-audit to check for known vulnerabilities in dependencies."""
-	import subprocess
-	import sys
-	try:
-		# Try running pip-audit module directly
-		result = subprocess.run(
-			[sys.executable, "-m", "pip_audit"],
-			capture_output=True,
-			text=True,
-			timeout=30
-		)
-		if result.returncode == 0:
-			return "✅ No known vulnerabilities found in dependencies!"
-		else:
-			# Still show output even if non-zero (tool found issues but that's ok)
-			output = result.stdout or result.stderr
-			if "No known vulnerabilities" in output:
-				return "✅ No known vulnerabilities found in dependencies!"
-			if len(output) > 1500:
-				return output[:1500] + "\n... (output truncated)"
-			return output or "pip-audit check completed with warnings."
-	except Exception as e:
-		return f"⚠️ pip-audit could not run: {str(e)}. Install with: pip install pip-audit"
+    """Run pip-audit to check for known vulnerabilities in dependencies."""
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "pip_audit"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return "✅ No known vulnerabilities found in dependencies!"
+
+        output = result.stdout or result.stderr or ""
+        missing_tool_message = _missing_audit_module_message(output, "pip_audit", "pip-audit")
+        if missing_tool_message:
+            return missing_tool_message
+        if "No known vulnerabilities" in output:
+            return "✅ No known vulnerabilities found in dependencies!"
+        if len(output) > 1500:
+            return output[:1500] + "\n... (output truncated)"
+        return output or "pip-audit check completed with warnings."
+    except Exception as e:
+        return f"⚠️ pip-audit could not run: {str(e)}. Install with: pip install pip-audit"
 
 
 async def run_bandit() -> str:
-	"""Run bandit to check for common security issues in Python code."""
-	import subprocess
-	import sys
-	try:
-		result = subprocess.run(
-			[sys.executable, "-m", "bandit", "-r", ".", "-ll", "-f", "txt"],
-			capture_output=True,
-			text=True,
-			timeout=30,
-			cwd="."
-		)
-		if result.returncode == 0:
-			return "✅ No high/critical security issues found by bandit!"
-		else:
-			output = result.stdout or result.stderr or "Bandit scan completed."
-			if "No issues identified" in output:
-				return "✅ No high/critical security issues found by bandit!"
-			# Limit output to 1500 chars to avoid spam
-			if len(output) > 1500:
-				return output[:1500] + "\n... (output truncated)"
-			return output
-	except Exception as e:
-		return f"⚠️ bandit could not run: {str(e)}. Install with: pip install bandit"
+    """Run bandit to check for common security issues in Python code."""
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "bandit", "-r", ".", "-ll", "-f", "txt"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            cwd=".",
+        )
+        if result.returncode == 0:
+            return "✅ No high/critical security issues found by bandit!"
+
+        output = result.stdout or result.stderr or "Bandit scan completed."
+        missing_tool_message = _missing_audit_module_message(output, "bandit", "bandit")
+        if missing_tool_message:
+            return missing_tool_message
+        if "No issues identified" in output:
+            return "✅ No high/critical security issues found by bandit!"
+        if len(output) > 1500:
+            return output[:1500] + "\n... (output truncated)"
+        return output
+    except Exception as e:
+        return f"⚠️ bandit could not run: {str(e)}. Install with: pip install bandit"
 
 
 async def run_safety_check() -> str:
-	"""Run safety to check pip packages for known vulnerabilities."""
-	import subprocess
-	import sys
-	try:
-		result = subprocess.run(
-			[sys.executable, "-m", "safety", "check", "--json"],
-			capture_output=True,
-			text=True,
-			timeout=30
-		)
-		if result.returncode == 0:
-			return "✅ No security issues found by safety!"
-		else:
-			output = result.stdout or result.stderr or "Safety check completed."
-			if "No known security vulnerabilities" in output or result.returncode == 64:
-				# Exit code 64 means no vulnerabilities
-				return "✅ No security issues found by safety!"
-			# Limit output to 1500 chars
-			if len(output) > 1500:
-				return output[:1500] + "\n... (output truncated)"
-			return output
-	except Exception as e:
-		return f"⚠️ safety could not run: {str(e)}. Install with: pip install safety"
+    """Run safety to check pip packages for known vulnerabilities."""
+    import subprocess
+    import sys
+
+    try:
+        result = subprocess.run(
+            [sys.executable, "-m", "safety", "check", "--json"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode == 0:
+            return "✅ No security issues found by safety!"
+
+        output = result.stdout or result.stderr or "Safety check completed."
+        missing_tool_message = _missing_audit_module_message(output, "safety", "safety")
+        if missing_tool_message:
+            return missing_tool_message
+        if "No known security vulnerabilities" in output or result.returncode == 64:
+            return "✅ No security issues found by safety!"
+        if len(output) > 1500:
+            return output[:1500] + "\n... (output truncated)"
+        return output
+    except Exception as e:
+        return f"⚠️ safety could not run: {str(e)}. Install with: pip install safety"
 
 
 async def run_full_security_audit() -> str:
