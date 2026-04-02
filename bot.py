@@ -39,13 +39,7 @@ from memory import (
 	search_notes,
 	set_distillation,
 )
-from personality import (
-	MAX_CUSTOM_PERSONALITY_CHARS,
-	clear_custom_personality_prompt,
-	get_custom_personality_prompt,
-	personality_for,
-	set_custom_personality_prompt,
-)
+from personality import get_custom_personality_prompt, personality_for
 from security import safe_output, sanitize_input, run_pip_audit, run_bandit, run_safety_check, run_full_security_audit
 from tools.vision import ask_ollama_vision
 from user_db import get_persona_for_user, get_setting, set_setting
@@ -506,6 +500,38 @@ def paginate_lines(header: str, lines: list[str], limit: int = 1900) -> list[str
 	return messages
 
 
+def split_message(content: str, limit: int = 2000) -> list[str]:
+	text = (content or "").strip()
+	if not text:
+		return []
+	if len(text) <= limit:
+		return [text]
+
+	messages = []
+	remaining = text
+	while len(remaining) > limit:
+		split_at = remaining.rfind("\n\n", 0, limit + 1)
+		if split_at <= 0:
+			split_at = remaining.rfind("\n", 0, limit + 1)
+		if split_at <= 0:
+			split_at = remaining.rfind(" ", 0, limit + 1)
+		if split_at <= 0:
+			split_at = limit
+		chunk = remaining[:split_at].rstrip()
+		if chunk:
+			messages.append(chunk)
+		remaining = remaining[split_at:].lstrip()
+
+	if remaining:
+		messages.append(remaining)
+	return messages
+
+
+async def send_chunked_message(ctx: commands.Context, content: str, limit: int = 2000):
+	for chunk in split_message(content, limit=limit):
+		await ctx.send(chunk)
+
+
 async def build_chat_prompt(user_message: str, user_id: int, memory_status: str | None = None, allow_model_memory_edits: bool = True) -> str:
 	cleaned = sanitize_input(user_message)
 	notes_context = await build_notes_context(cleaned)
@@ -661,39 +687,6 @@ async def lav_command(ctx: commands.Context, *, message: str):
 	async with ctx.typing():
 		reply = await process_chat_message(message, ctx.author.id)
 	await ctx.send(reply)
-
-
-@bot.command(name="personality")
-async def personality_command(ctx: commands.Context, action: str = "show", *, prompt: str = ""):
-	if not is_allowed_user(ctx.author.id):
-		return
-
-	action = action.lower().strip()
-	user_id = ctx.author.id
-	if action == "set":
-		cleaned_prompt = prompt.strip()
-		if not cleaned_prompt:
-			await ctx.send("Usage: !personality set <prompt>")
-			return
-		try:
-			set_custom_personality_prompt(user_id, cleaned_prompt)
-		except ValueError as e:
-			await ctx.send(str(e))
-			return
-		await ctx.send(f"Saved your custom personality prompt. (Max {MAX_CUSTOM_PERSONALITY_CHARS} characters)")
-		return
-	if action == "show":
-		current_prompt = get_custom_personality_prompt(user_id)
-		if not current_prompt:
-			await ctx.send("You do not have a custom personality prompt set.")
-			return
-		await ctx.send(f"Your custom personality prompt:\n{current_prompt}")
-		return
-	if action == "clear":
-		removed = clear_custom_personality_prompt(user_id)
-		await ctx.send("Cleared your custom personality prompt." if removed else "You do not have a custom personality prompt set.")
-		return
-	await ctx.send("Usage: !personality set <prompt> | !personality show | !personality clear")
 
 
 @bot.command(name="ping")
@@ -1114,10 +1107,6 @@ async def guji_command(ctx: commands.Context):
 		"- `!lav <message>` — talk to me\n"
 		"- `@Lavender <message>` — mention me to chat\n"
 		"- Tell me `please remember ...`, `change what you remember about ... to ...`, or `forget ...` to manage persona memory\n\n"
-		"🧭 **Personality**\n"
-		"- `!personality set <prompt>` — set your custom personality prompt\n"
-		"- `!personality show` — show your custom personality prompt\n"
-		"- `!personality clear` — clear your custom personality prompt\n\n"
 		"📝 **Notes & Tags**\n"
 		"- `!note <text>` — save a note exactly as written\n"
 		"- `!batch_note <count>` — save recent channel messages as notes\n"
@@ -1134,13 +1123,13 @@ async def guji_command(ctx: commands.Context):
 		"- `!listmoments <page>` — list moments (newest first, numbered)\n"
 		"- `!del_moment <number>` — delete a moment by its number\n"
 		"- `!distillation` — show the distillation paragraph (formed after every 50 moments)\n"
-		"- `!prune` — delete all unfavourited pictures immediately\n\n"
 		"📷 **Images**\n"
 		"- send an image — I'll save it with an ordered filename and describe it\n"
 		"- `!listpics <page>` — list saved images\n"
 		"- `!favnum <number>` — favourite an image\n"
 		"- `!unfavnum <number>` — unfavourite an image\n"
 		"- `!listfav` — list favourite images\n\n"
+		"- `!prune` — delete all unfavourited pictures immediately\n\n"
 		"🌐 **Internet Search**\n"
 		"- `!weather [location]` — get weather\n"
 		"- `!news [query]` — search the news\n\n"
@@ -1152,7 +1141,7 @@ async def guji_command(ctx: commands.Context):
 		"- `!security_audit <type>` — run specific audit (pip-audit, bandit, safety)\n"
 		"- `dry_run_commands.py` — verify note/tag and memory parsing from the terminal\n"
 	)
-	await ctx.send(help_text)
+	await send_chunked_message(ctx, help_text)
 
 
 @bot.command(name="weather")
@@ -1192,7 +1181,7 @@ async def ver_command(ctx: commands.Context):
 		"- Added a dry-run verification script for notes, tags, persona memories, and moments\n"
 		"- Updated help text and version history for the new Lavbot 4.0 workflow\n"
 	)
-	await ctx.send(ver_text)
+	await send_chunked_message(ctx, ver_text)
 
 
 @bot.command(name="security_audit")
