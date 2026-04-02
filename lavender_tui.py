@@ -50,7 +50,7 @@ class LavenderTUI(App):
     async def on_mount(self):
         chat = self.query_one("#chat", RichLog)
         chat.write("🌃")
-        chat.write("I am Lavbot, your personal discord companion vibe coded by Ally the elf. Github: https://github.com/Allyofthevalley")
+        chat.write("I am Lavbot, your personal discord companion vibe coded by Ally the elf. Github: https://github.com/puppetjellyfish")
         chat.write("Type /lav to see what I can do ⇩")
 
     async def on_input_submitted(self, message: Input.Submitted):
@@ -577,7 +577,7 @@ class LavenderTUI(App):
         chat.write("Lavbot Version History")
         chat.write("")
         chat.write("Credits:")
-        chat.write("GitHub: https://github.com/allyofthevalley")
+        chat.write("GitHub: https://github.com/puppetjellyfish")
         chat.write("")
         chat.write("RISK WARNING:")
         chat.write("This is a personal AI companion project in development.")
