@@ -27,18 +27,80 @@ def get_news_key() -> str:
 
 OLLAMA_DEFAULT_HOST = "localhost"
 OLLAMA_DEFAULT_PORT = "11434"
+LOCAL_PROVIDER_DEFAULT = "auto"
+LOCAL_API_BASE_URL_DEFAULT = f"http://{OLLAMA_DEFAULT_HOST}:{OLLAMA_DEFAULT_PORT}"
+
+OPENAI_COMPATIBLE_PROVIDER_ALIASES = {
+    "openai": "openai",
+    "openai-compatible": "openai",
+    "openai_compatible": "openai",
+    "lmstudio": "openai",
+    "lm-studio": "openai",
+    "lm studio": "openai",
+    "vllm": "openai",
+    "llamacpp": "openai",
+    "llama.cpp": "openai",
+    "koboldcpp": "openai",
+    "oobabooga": "openai",
+    "text-generation-webui": "openai",
+    "textgen": "openai",
+}
+
+
+def normalize_local_api_base_url(url: str | None) -> str:
+    """Return a normalized local API base URL with scheme and no trailing slash."""
+    raw = (url or "").strip()
+    if not raw:
+        return LOCAL_API_BASE_URL_DEFAULT
+    if "://" not in raw:
+        raw = f"http://{raw}"
+    return raw.rstrip("/")
+
+
+def get_local_api_base_url() -> str:
+    """Return the configured local AI provider base URL.
+
+    Prefers the newer LOCAL_API_BASE_URL setting, while still honoring the
+    legacy OLLAMA_HOST / OLLAMA_PORT values for backwards compatibility.
+    """
+    explicit_url = get_setting("LOCAL_API_BASE_URL") or os.getenv("LOCAL_API_BASE_URL")
+    if explicit_url:
+        return normalize_local_api_base_url(explicit_url)
+
+    host = get_setting("OLLAMA_HOST") or os.getenv("OLLAMA_HOST") or OLLAMA_DEFAULT_HOST
+    port = get_setting("OLLAMA_PORT") or os.getenv("OLLAMA_PORT") or OLLAMA_DEFAULT_PORT
+    return normalize_local_api_base_url(f"http://{host}:{port}")
+
+
+def get_local_provider_name() -> str:
+    """Return the configured local provider label."""
+    return (get_setting("LOCAL_PROVIDER") or os.getenv("LOCAL_PROVIDER") or LOCAL_PROVIDER_DEFAULT).strip() or LOCAL_PROVIDER_DEFAULT
+
+
+def resolve_local_provider_kind(provider_name: str | None = None, base_url: str | None = None) -> str:
+    """Collapse provider labels into the API family used by the code."""
+    provider = (provider_name or "").strip().lower()
+    normalized_url = normalize_local_api_base_url(base_url)
+
+    if provider in {"", "auto"}:
+        if normalized_url.endswith("/v1") or "/v1/" in normalized_url or ":1234" in normalized_url:
+            return "openai"
+        return "ollama"
+
+    if provider == "ollama":
+        return "ollama"
+
+    return OPENAI_COMPATIBLE_PROVIDER_ALIASES.get(provider, "openai")
+
+
+def get_local_provider_kind() -> str:
+    """Return the resolved API family for the active local provider."""
+    return resolve_local_provider_kind(get_local_provider_name(), get_local_api_base_url())
 
 
 def get_ollama_base_url() -> str:
-    """Return the Ollama base URL (e.g. http://localhost:11434).
-
-    Reads OLLAMA_HOST and OLLAMA_PORT from the database (set via /ollama in
-    the TUI) and falls back to environment variables, then the defaults
-    (localhost:11434).
-    """
-    host = get_setting("OLLAMA_HOST") or os.getenv("OLLAMA_HOST") or OLLAMA_DEFAULT_HOST
-    port = get_setting("OLLAMA_PORT") or os.getenv("OLLAMA_PORT") or OLLAMA_DEFAULT_PORT
-    return f"http://{host}:{port}"
+    """Backward-compatible alias for the local provider base URL."""
+    return get_local_api_base_url()
 
 
 # -----------------------------------------------------------------------------

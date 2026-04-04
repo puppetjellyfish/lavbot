@@ -7,6 +7,7 @@ import subprocess
 import os
 import shlex
 import sys
+from urllib.parse import urlparse
 
 from bot import generate_response
 from data_paths import FAVORITES_PATH, IMAGES_DIR, MEMORY_DIR, USERDATA_ROOT, ensure_userdata_dirs
@@ -21,7 +22,14 @@ from user_db import (
     set_setting,
     get_setting,
 )
-from config import OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_PORT
+from config import (
+    LOCAL_API_BASE_URL_DEFAULT,
+    OLLAMA_DEFAULT_HOST,
+    OLLAMA_DEFAULT_PORT,
+    get_local_api_base_url,
+    get_local_provider_name,
+    normalize_local_api_base_url,
+)
 from personality import (
     clear_custom_personality_prompt,
     get_custom_personality_prompt,
@@ -46,6 +54,24 @@ class LavenderTUI(App):
         yield RichLog(id="chat", highlight=True)
         yield Input(placeholder="Talk to Lavender...", id="input")
         yield Footer()
+
+    def _save_local_base_url(self, base_url: str) -> str:
+        normalized = normalize_local_api_base_url(base_url)
+        parsed = urlparse(normalized)
+        set_setting("LOCAL_API_BASE_URL", normalized)
+        if parsed.hostname:
+            set_setting("OLLAMA_HOST", parsed.hostname)
+        if parsed.port:
+            set_setting("OLLAMA_PORT", str(parsed.port))
+        return normalized
+
+    def _build_local_base_url(self, *, host: str | None = None, port: str | None = None) -> str:
+        parsed = urlparse(get_local_api_base_url())
+        scheme = parsed.scheme or "http"
+        resolved_host = host or parsed.hostname or OLLAMA_DEFAULT_HOST
+        resolved_port = port or (str(parsed.port) if parsed.port else OLLAMA_DEFAULT_PORT)
+        path = (parsed.path or "").rstrip("/")
+        return f"{scheme}://{resolved_host}:{resolved_port}{path}".rstrip("/")
 
     async def on_mount(self):
         chat = self.query_one("#chat", RichLog)
@@ -106,17 +132,20 @@ class LavenderTUI(App):
             chat.write("/news set <key> — set News API key")
             chat.write("/news show — display current News API key")
             chat.write("")
-            chat.write("Ollama:")
-            chat.write(f"/ollama show — show current Ollama host/port (default: {OLLAMA_DEFAULT_HOST}:{OLLAMA_DEFAULT_PORT})")
-            chat.write("/ollama set host <value> — set Ollama host (default: localhost)")
-            chat.write("/ollama set port <value> — set Ollama port (default: 11434)")
-            chat.write("/ollama reset — restore Ollama host/port to defaults")
+            chat.write("Local AI Provider:")
+            chat.write(f"/ollama show — show current provider and base URL (default: {LOCAL_API_BASE_URL_DEFAULT})")
+            chat.write("/ollama set provider <auto|ollama|openai|lmstudio> — choose the local API format")
+            chat.write("/ollama set base_url <url> — set the full local API URL (e.g. http://localhost:1234/v1)")
+            chat.write("/ollama set host <value> — quickly update just the hostname")
+            chat.write("/ollama set port <value> — quickly update just the port")
+            chat.write("/provider ... — alias for /ollama ...")
+            chat.write("/ollama reset — restore local provider defaults")
             chat.write("")
             chat.write("System:")
             chat.write("/models — show current AI models")
             chat.write("/models set <type> <model> — change AI model")
             chat.write("/versions — show version history & credits")
-            chat.write("/quickstart — setup guide for Python, Ollama, model download, and first run")
+            chat.write("/quickstart — setup guide for Python, local AI providers, model setup, and first run")
             chat.write("/discordhelp — list Discord bot commands")
             chat.write("/bot start — start the Discord bot")
             chat.write("/bot stop — stop the Discord bot")
@@ -367,39 +396,59 @@ class LavenderTUI(App):
                     chat.write(f"NEWS_API_KEY = {masked}")
                 return
 
-        if cmd == "/ollama":
+        if cmd in {"/ollama", "/provider"}:
             if len(parts) >= 2 and parts[1].lower() == "show":
+                provider = get_setting("LOCAL_PROVIDER") or get_local_provider_name()
+                base_url = get_local_api_base_url()
                 host = get_setting("OLLAMA_HOST") or OLLAMA_DEFAULT_HOST
                 port = get_setting("OLLAMA_PORT") or OLLAMA_DEFAULT_PORT
-                host_src = "(custom)" if get_setting("OLLAMA_HOST") else f"(default: {OLLAMA_DEFAULT_HOST})"
-                port_src = "(custom)" if get_setting("OLLAMA_PORT") else f"(default: {OLLAMA_DEFAULT_PORT})"
-                chat.write(f"Ollama host: {host} {host_src}")
-                chat.write(f"Ollama port: {port} {port_src}")
+                chat.write(f"Local provider: {provider}")
+                chat.write(f"API base URL: {base_url}")
+                chat.write(f"Legacy host/port: {host}:{port}")
+                chat.write("Examples: Ollama = http://localhost:11434 | LM Studio = http://localhost:1234/v1")
                 return
 
             if len(parts) >= 4 and parts[1].lower() == "set":
                 field = parts[2].lower()
                 value = parts[3]
                 if field == "host":
-                    set_setting("OLLAMA_HOST", value)
-                    chat.write(f"Ollama host set to {value}.")
+                    updated_url = self._save_local_base_url(self._build_local_base_url(host=value))
+                    chat.write(f"Local provider host set to {value}.")
+                    chat.write(f"API base URL is now {updated_url}.")
                 elif field == "port":
                     if not value.isdigit():
                         chat.write("Port must be a number.")
                     else:
-                        set_setting("OLLAMA_PORT", value)
-                        chat.write(f"Ollama port set to {value}.")
+                        updated_url = self._save_local_base_url(self._build_local_base_url(port=value))
+                        chat.write(f"Local provider port set to {value}.")
+                        chat.write(f"API base URL is now {updated_url}.")
+                elif field in {"base_url", "url"}:
+                    updated_url = self._save_local_base_url(value)
+                    chat.write(f"Local provider base URL set to {updated_url}.")
+                elif field == "provider":
+                    provider_value = value.strip().lower().replace("_", "-")
+                    if provider_value == "lm-studio":
+                        provider_value = "lmstudio"
+                    allowed = {"auto", "ollama", "openai", "openai-compatible", "lmstudio"}
+                    if provider_value not in allowed:
+                        chat.write("Provider must be one of: auto, ollama, openai, openai-compatible, lmstudio.")
+                    else:
+                        set_setting("LOCAL_PROVIDER", provider_value)
+                        chat.write(f"Local provider type set to {provider_value}.")
                 else:
-                    chat.write("Use: /ollama set host <value>  OR  /ollama set port <value>")
+                    chat.write("Use: /ollama set provider <auto|ollama|openai|lmstudio> | /ollama set base_url <url> | /ollama set host <value> | /ollama set port <value>")
                 return
 
             if len(parts) >= 2 and parts[1].lower() == "reset":
+                delete_setting("LOCAL_PROVIDER")
+                delete_setting("LOCAL_API_BASE_URL")
                 delete_setting("OLLAMA_HOST")
                 delete_setting("OLLAMA_PORT")
-                chat.write(f"Ollama host/port reset to defaults ({OLLAMA_DEFAULT_HOST}:{OLLAMA_DEFAULT_PORT}).")
+                chat.write(f"Local provider settings reset to defaults ({LOCAL_API_BASE_URL_DEFAULT}, provider=auto).")
                 return
 
-            chat.write(f"Usage: /ollama show | /ollama set host <v> | /ollama set port <v> | /ollama reset")
+            chat.write("Usage: /ollama show | /ollama set provider <auto|ollama|openai|lmstudio> | /ollama set base_url <url> | /ollama set host <v> | /ollama set port <v> | /ollama reset")
+            chat.write("Tip: `/provider ...` is an alias for `/ollama ...`.")
             return
 
         if cmd == "/security":
@@ -539,21 +588,28 @@ class LavenderTUI(App):
         except Exception:
             ollama_status = "ollama not detected"
 
+        provider = get_setting("LOCAL_PROVIDER") or get_local_provider_name()
+        base_url = get_local_api_base_url()
+
         chat.write("Lavbot Quickstart")
         chat.write("")
         chat.write(f"Current Python: {sys.executable}")
-        chat.write(f"Ollama status: {ollama_status}")
+        chat.write(f"Configured local provider: {provider}")
+        chat.write(f"Configured API base URL: {base_url}")
+        chat.write(f"Ollama CLI status (optional): {ollama_status}")
         chat.write("")
         chat.write("1. Install Python")
         chat.write("   Download Python 3.11+ from https://www.python.org/downloads/windows/")
         chat.write("   Make sure 'Add python.exe to PATH' is enabled during install.")
         chat.write("")
-        chat.write("2. Install Ollama")
-        chat.write("   Download Ollama for Windows from https://ollama.com/download/windows")
-        chat.write("   After install, open a terminal and make sure `ollama --version` works.")
+        chat.write("2. Start a local AI provider")
+        chat.write("   Option A: Ollama → https://ollama.com/download/windows")
+        chat.write("   Option B: LM Studio local server → https://lmstudio.ai/")
+        chat.write("   Most non-Ollama local servers expose an OpenAI-compatible /v1 endpoint.")
         chat.write("")
-        chat.write("3. Pull the language model")
-        chat.write("   Run: ollama pull qwen3.5")
+        chat.write("3. Load a model")
+        chat.write("   Ollama example: ollama pull qwen3.5")
+        chat.write("   LM Studio example: download a model and start the local server in-app.")
         chat.write("")
         chat.write("4. Install Lavbot dependencies")
         chat.write(f"   Run: \"{sys.executable}\" -m pip install -r requirements.txt")
@@ -561,7 +617,9 @@ class LavenderTUI(App):
         chat.write("5. Configure Lavbot in the TUI")
         chat.write("   /token set <discord_bot_token>")
         chat.write("   /user add <discord_user_id> <name> <persona>")
-        chat.write("   /ollama show")
+        chat.write("   /ollama set provider lmstudio")
+        chat.write("   /ollama set base_url http://localhost:1234/v1")
+        chat.write("   /models set chat <your_model_name>")
         chat.write("")
         chat.write("6. Verify storage and note systems")
         chat.write(f"   Run: \"{sys.executable}\" dry_run_storage.py")
@@ -595,7 +653,7 @@ class LavenderTUI(App):
             ("3/26/2026", "v4.0", "MEMORY REBUILD, QUICKSTART, AND DRY-RUN", [
                 "Rebuilt notes, tags, persona memory, and short-term moments around a clean storage layer",
                 "Deterministic explicit memory editing for remember/change/forget requests",
-                "Quickstart tutorial in the TUI for Python, Ollama, model download, and first-run setup",
+                "Quickstart tutorial in the TUI for Python, local AI providers, model setup, and first-run setup",
                 "Dry-run verification script for notes, tags, persona memories, and moments",
                 "Help text and version history updated for the new workflow"
             ]),
@@ -603,7 +661,7 @@ class LavenderTUI(App):
                 "Textual TUI interface for terminal-based chat",
                 "Clean, modern interface with RichLog for chat display",
                 "Direct integration with Lavender's personality and memory",
-                "Fallback responses when Ollama is unavailable",
+                "Fallback responses when the local AI provider is unavailable",
                 "Custom CSS styling for lavender theme"
             ]),
             ("3/11/2026", "v3.2", "MEMORY & INTERNET UPDATE ✨", [

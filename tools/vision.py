@@ -1,12 +1,96 @@
 import base64
 import json
+import os
+
 import requests
 
-VISION_MODEL = "qwen3.5"  # Qwen 3.5 includes multimodal vision capabilities
+from config import get_local_provider_kind, get_ollama_base_url
+from user_db import get_setting
+
+DEFAULT_VISION_MODEL = "qwen3.5"
+
+
+def _get_vision_model() -> str:
+    return get_setting("VISION_MODEL") or os.getenv("VISION_MODEL") or DEFAULT_VISION_MODEL
+
+
+def _extract_local_text_response(data: dict) -> str:
+    if not isinstance(data, dict):
+        return ""
+
+    raw = data.get("response")
+    if isinstance(raw, str) and raw.strip():
+        return raw.strip()
+
+    message = data.get("message")
+    if isinstance(message, dict):
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content.strip()
+
+    choices = data.get("choices") or []
+    if choices:
+        first_choice = choices[0] or {}
+        message = first_choice.get("message") or {}
+        content = message.get("content", "")
+        if isinstance(content, str):
+            return content.strip()
+        if isinstance(content, list):
+            text_parts = [
+                part.get("text", "")
+                for part in content
+                if isinstance(part, dict) and part.get("type") == "text"
+            ]
+            return "\n".join(part for part in text_parts if part).strip()
+
+    return ""
+
+
+def _post_vision_request(prompt: str, encoded_image: str) -> str:
+    base_url = get_ollama_base_url()
+    provider_kind = get_local_provider_kind()
+    vision_model = _get_vision_model()
+
+    if provider_kind == "ollama":
+        response = requests.post(
+            f"{base_url}/api/generate",
+            json={
+                "model": vision_model,
+                "prompt": prompt,
+                "images": [encoded_image],
+                "stream": False,
+            },
+            timeout=180,
+        )
+    else:
+        response = requests.post(
+            f"{base_url}/chat/completions",
+            json={
+                "model": vision_model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": f"data:image/png;base64,{encoded_image}"},
+                            },
+                        ],
+                    }
+                ],
+                "stream": False,
+            },
+            timeout=180,
+        )
+
+    response.raise_for_status()
+    return _extract_local_text_response(response.json())
+
 
 def ask_ollama_vision(image_path: str) -> dict:
     """
-    Sends an image to an Ollama vision model and returns:
+    Sends an image to a local vision model and returns:
     - description: short, gentle description in Lavender's voice
     - tags: visual keywords
     - emotion: detected emotional content
@@ -51,30 +135,14 @@ If you cannot produce valid JSON, output exactly:
 """
 
     try:
-        # Read and encode image
         with open(image_path, "rb") as f:
             image_bytes = f.read()
         encoded = base64.b64encode(image_bytes).decode("utf-8")
 
-        # Send to Ollama
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": VISION_MODEL,
-                "prompt": prompt,
-                "images": [encoded],
-                "stream": False
-            }
-        )
-
-        # Extract model text output
-        raw = response.json().get("response", "")
-
-        # Try to parse JSON
+        raw = _post_vision_request(prompt, encoded)
         return json.loads(raw)
 
     except Exception:
-        # Guaranteed safe fallback
         return {
             "description": "baa… I had trouble looking at that picture…",
             "detailed_description": "I couldn't quite understand this image, sorry…",
@@ -117,17 +185,7 @@ Emotion options: happy, sad, peaceful, energetic, melancholic, romantic, playful
             image_bytes = f.read()
         encoded = base64.b64encode(image_bytes).decode("utf-8")
 
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": VISION_MODEL,
-                "prompt": prompt,
-                "images": [encoded],
-                "stream": False
-            }
-        )
-
-        raw = response.json().get("response", "")
+        raw = _post_vision_request(prompt, encoded)
         return json.loads(raw)
 
     except Exception:
@@ -167,17 +225,7 @@ Examples of themes: minimalist, cluttered, natural, urban, vintage, modern, drea
             image_bytes = f.read()
         encoded = base64.b64encode(image_bytes).decode("utf-8")
 
-        response = requests.post(
-            "http://localhost:11434/api/generate",
-            json={
-                "model": VISION_MODEL,
-                "prompt": prompt,
-                "images": [encoded],
-                "stream": False
-            }
-        )
-
-        raw = response.json().get("response", "")
+        raw = _post_vision_request(prompt, encoded)
         return json.loads(raw)
 
     except Exception:

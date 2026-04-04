@@ -9,7 +9,14 @@ import requests
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from config import get_discord_token, get_news_key, get_ollama_base_url, is_allowed_user, who_is
+from config import (
+	get_discord_token,
+	get_local_provider_kind,
+	get_news_key,
+	get_ollama_base_url,
+	is_allowed_user,
+	who_is,
+)
 from data_paths import FAVORITES_PATH, IMAGES_DIR, USER_ENV_PATH, ensure_userdata_dirs
 from memory import (
 	add_moment,
@@ -344,13 +351,66 @@ async def apply_persona_memory_actions(user_id: int, reply: str):
 				existing.remove(body)
 
 
+def _extract_local_text_response(data: dict) -> str:
+	"""Extract assistant text from Ollama or OpenAI-compatible responses."""
+	if not isinstance(data, dict):
+		return ""
+
+	message = data.get("message")
+	if isinstance(message, dict):
+		content = message.get("content", "")
+		if isinstance(content, str):
+			return content.strip()
+
+	choices = data.get("choices") or []
+	if choices:
+		first_choice = choices[0] or {}
+		message = first_choice.get("message") or {}
+		content = message.get("content", "")
+		if isinstance(content, str):
+			return content.strip()
+		if isinstance(content, list):
+			text_parts = [
+				part.get("text", "")
+				for part in content
+				if isinstance(part, dict) and part.get("type") == "text"
+			]
+			return "\n".join(part for part in text_parts if part).strip()
+
+	response_text = data.get("response", "")
+	if isinstance(response_text, str):
+		return response_text.strip()
+
+	return ""
+
+
 def _ollama_sync(prompt: str) -> str:
+	base_url = get_ollama_base_url()
+	provider_kind = get_local_provider_kind()
+	chat_model = get_setting("CHAT_MODEL") or os.getenv("CHAT_MODEL") or "qwen3.5"
+
 	try:
-		response = requests.post(
-			f"{get_ollama_base_url()}/api/chat",
-			json={"model": "qwen3.5", "messages": [{"role": "user", "content": prompt}], "stream": False},
-			timeout=180,
-		)
+		if provider_kind == "ollama":
+			response = requests.post(
+				f"{base_url}/api/chat",
+				json={
+					"model": chat_model,
+					"messages": [{"role": "user", "content": prompt}],
+					"stream": False,
+				},
+				timeout=180,
+			)
+		else:
+			response = requests.post(
+				f"{base_url}/chat/completions",
+				json={
+					"model": chat_model,
+					"messages": [{"role": "user", "content": prompt}],
+					"stream": False,
+				},
+				timeout=180,
+			)
+
 		response.raise_for_status()
 		try:
 			data = response.json()
@@ -363,9 +423,11 @@ def _ollama_sync(prompt: str) -> str:
 					continue
 			if data is None:
 				raise
-		return data.get("message", {}).get("content", "") or ""
+
+		reply = _extract_local_text_response(data)
+		return reply or "baa… My local AI provider answered with an empty reply."
 	except Exception:
-		return "baa… I can't connect to my brain right now. (Ollama not running?) But I still love chatting with you!"
+		return "baa… I can't connect to my local AI provider right now. Please check the configured provider and base URL."
 
 
 async def ollama_chat(prompt: str) -> str:
