@@ -29,6 +29,7 @@ OLLAMA_DEFAULT_HOST = "localhost"
 OLLAMA_DEFAULT_PORT = "11434"
 LOCAL_PROVIDER_DEFAULT = "auto"
 LOCAL_API_BASE_URL_DEFAULT = f"http://{OLLAMA_DEFAULT_HOST}:{OLLAMA_DEFAULT_PORT}"
+DEFAULT_LOCAL_MODEL = "qwen3.5"
 
 OPENAI_COMPATIBLE_PROVIDER_ALIASES = {
     "openai": "openai",
@@ -55,6 +56,45 @@ def normalize_local_api_base_url(url: str | None) -> str:
     if "://" not in raw:
         raw = f"http://{raw}"
     return raw.rstrip("/")
+
+
+def get_local_model(role: str | None = None) -> str:
+    """Return the active local model name.
+
+    `LOCAL_MODEL` is the preferred shared setting for multimodal/MoE setups.
+    Legacy `CHAT_MODEL` and `VISION_MODEL` values are still honored as
+    fallbacks for older configs.
+    """
+    shared_model = get_setting("LOCAL_MODEL") or os.getenv("LOCAL_MODEL")
+    if shared_model:
+        return shared_model
+
+    role_name = (role or "").strip().lower()
+    if role_name == "vision":
+        return (
+            get_setting("VISION_MODEL")
+            or os.getenv("VISION_MODEL")
+            or get_setting("CHAT_MODEL")
+            or os.getenv("CHAT_MODEL")
+            or DEFAULT_LOCAL_MODEL
+        )
+
+    if role_name == "chat":
+        return (
+            get_setting("CHAT_MODEL")
+            or os.getenv("CHAT_MODEL")
+            or get_setting("VISION_MODEL")
+            or os.getenv("VISION_MODEL")
+            or DEFAULT_LOCAL_MODEL
+        )
+
+    return (
+        get_setting("CHAT_MODEL")
+        or os.getenv("CHAT_MODEL")
+        or get_setting("VISION_MODEL")
+        or os.getenv("VISION_MODEL")
+        or DEFAULT_LOCAL_MODEL
+    )
 
 
 def get_local_api_base_url() -> str:

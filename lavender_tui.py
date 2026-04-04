@@ -27,6 +27,7 @@ from config import (
     OLLAMA_DEFAULT_HOST,
     OLLAMA_DEFAULT_PORT,
     get_local_api_base_url,
+    get_local_model,
     get_local_provider_name,
     normalize_local_api_base_url,
 )
@@ -142,8 +143,9 @@ class LavenderTUI(App):
             chat.write("/ollama reset — restore local provider defaults")
             chat.write("")
             chat.write("System:")
-            chat.write("/models — show current AI models")
-            chat.write("/models set <type> <model> — change AI model")
+            chat.write("/models — show the active shared AI model")
+            chat.write("/models set <model> — use one model for both chat and vision")
+            chat.write("/models set chat <model> or /models set vision <model> — optional advanced overrides")
             chat.write("/versions — show version history & credits")
             chat.write("/quickstart — setup guide for Python, local AI providers, model setup, and first run")
             chat.write("/discordhelp — list Discord bot commands")
@@ -177,10 +179,15 @@ class LavenderTUI(App):
             return
 
         if cmd == "/models":
-            if len(parts) >= 2 and parts[1].lower() == "set" and len(parts) >= 4:
-                model_type = parts[2].lower()
-                model_name = parts[3]
-                self.set_model(chat, model_type, model_name)
+            if len(parts) >= 2 and parts[1].lower() == "set":
+                if len(parts) == 3:
+                    self.set_model(chat, "shared", parts[2])
+                elif len(parts) >= 4:
+                    model_type = parts[2].lower()
+                    model_name = parts[3]
+                    self.set_model(chat, model_type, model_name)
+                else:
+                    chat.write("Usage: /models set <model> | /models set chat <model> | /models set vision <model>")
             else:
                 self.show_models(chat)
             return
@@ -541,7 +548,7 @@ class LavenderTUI(App):
                 conn.execute("DELETE FROM settings")
                 conn.execute("DELETE FROM users")
                 conn.commit()
-            chat.write(f"Cleared all users, API keys, Discord token, and Ollama settings from {USERDATA_ROOT / 'user.db'}.")
+            chat.write(f"Cleared all users, API keys, Discord token, and local AI settings from {USERDATA_ROOT / 'user.db'}.")
         except Exception as e:
             errors.append(f"Could not clear {USERDATA_ROOT / 'user.db'}: {e}")
 
@@ -559,26 +566,42 @@ class LavenderTUI(App):
     def show_models(self, chat: RichLog):
         """Display current AI model settings."""
         chat.write("Current AI Models:")
-        
-        chat_model = get_setting("CHAT_MODEL") or "qwen3.5"
-        vision_model = get_setting("VISION_MODEL") or "qwen3.5"
-        
+
+        shared_model = get_setting("LOCAL_MODEL")
+        chat_model = get_local_model("chat")
+        vision_model = get_local_model("vision")
+
+        if shared_model:
+            chat.write(f"- Shared Model: {shared_model} (used for chat + vision)")
+        elif chat_model == vision_model:
+            chat.write(f"- Unified Active Model: {chat_model}")
+        else:
+            chat.write("- Shared Model: not set")
+
         chat.write(f"- Chat Model: {chat_model}")
         chat.write(f"- Vision Model: {vision_model}")
         chat.write("")
-        chat.write("Use: /models set <type> <model>")
-        chat.write("Example: /models set chat llama3.1")
+        chat.write("Recommended: /models set <model>")
+        chat.write("Optional advanced override: /models set chat <model> or /models set vision <model>")
+        chat.write("Example: /models set qwen3.5")
 
     def set_model(self, chat: RichLog, model_type: str, model_name: str):
         """Set an AI model."""
-        if model_type == "chat":
+        if model_type in {"shared", "all", "both", "model"}:
+            set_setting("LOCAL_MODEL", model_name)
+            delete_setting("CHAT_MODEL")
+            delete_setting("VISION_MODEL")
+            chat.write(f"Shared chat + vision model set to {model_name}.")
+        elif model_type == "chat":
+            delete_setting("LOCAL_MODEL")
             set_setting("CHAT_MODEL", model_name)
-            chat.write(f"Chat model set to {model_name}.")
+            chat.write(f"Chat model override set to {model_name}.")
         elif model_type == "vision":
+            delete_setting("LOCAL_MODEL")
             set_setting("VISION_MODEL", model_name)
-            chat.write(f"Vision model set to {model_name}.")
+            chat.write(f"Vision model override set to {model_name}.")
         else:
-            chat.write("Unknown model type. Use 'chat' or 'vision'.")
+            chat.write("Unknown model type. Use shared, chat, or vision.")
 
     async def show_quickstart(self, chat: RichLog):
         """Show a text-based quickstart guide for a fresh machine."""
@@ -619,7 +642,7 @@ class LavenderTUI(App):
         chat.write("   /user add <discord_user_id> <name> <persona>")
         chat.write("   /ollama set provider lmstudio")
         chat.write("   /ollama set base_url http://localhost:1234/v1")
-        chat.write("   /models set chat <your_model_name>")
+        chat.write("   /models set <your_model_name>")
         chat.write("")
         chat.write("6. Verify storage and note systems")
         chat.write(f"   Run: \"{sys.executable}\" dry_run_storage.py")

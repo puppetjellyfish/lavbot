@@ -11,6 +11,7 @@ from dotenv import load_dotenv
 
 from config import (
 	get_discord_token,
+	get_local_model,
 	get_local_provider_kind,
 	get_news_key,
 	get_ollama_base_url,
@@ -387,7 +388,7 @@ def _extract_local_text_response(data: dict) -> str:
 def _ollama_sync(prompt: str) -> str:
 	base_url = get_ollama_base_url()
 	provider_kind = get_local_provider_kind()
-	chat_model = get_setting("CHAT_MODEL") or os.getenv("CHAT_MODEL") or "qwen3.5"
+	chat_model = get_local_model("chat")
 
 	try:
 		if provider_kind == "ollama":

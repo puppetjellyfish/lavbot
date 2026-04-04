@@ -4,14 +4,11 @@ import os
 
 import requests
 
-from config import get_local_provider_kind, get_ollama_base_url
-from user_db import get_setting
-
-DEFAULT_VISION_MODEL = "qwen3.5"
+from config import get_local_model, get_local_provider_kind, get_ollama_base_url
 
 
 def _get_vision_model() -> str:
-    return get_setting("VISION_MODEL") or os.getenv("VISION_MODEL") or DEFAULT_VISION_MODEL
+    return get_local_model("vision")
 
 
 def _extract_local_text_response(data: dict) -> str:
