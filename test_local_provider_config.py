@@ -9,6 +9,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from config import get_local_model, normalize_local_api_base_url, resolve_local_provider_kind
+from tools.vision import build_lavender_vision_prompt
 
 
 def test_normalize_local_api_base_url():
@@ -51,8 +52,15 @@ def test_get_local_model_prefers_shared_model():
             os.environ["VISION_MODEL"] = previous_vision
 
 
+def test_build_lavender_vision_prompt_includes_user_text():
+    prompt = build_lavender_vision_prompt("does this plant look healthy?")
+    assert "does this plant look healthy?" in prompt
+    assert "user's accompanying message" in prompt.lower()
+
+
 if __name__ == "__main__":
     test_normalize_local_api_base_url()
     test_resolve_local_provider_kind()
     test_get_local_model_prefers_shared_model()
+    test_build_lavender_vision_prompt_includes_user_text()
     print("✅ Local provider config checks passed")

@@ -728,8 +728,9 @@ async def on_message(message: discord.Message):
 		if attachment.content_type and attachment.content_type.startswith("image/"):
 			await prune_old_unfavorited_images()
 			temp_path = await save_incoming_image(attachment)
+			caption_text = message.content.strip()
 			async with message.channel.typing():
-				vision_result = ask_ollama_vision(temp_path)
+				vision_result = ask_ollama_vision(temp_path, user_message=caption_text)
 			description = vision_result.get("detailed_description") or vision_result.get("description") or f"Saved that picture as {os.path.basename(temp_path)}."
 			description += f"\n\nSaved as **{os.path.basename(temp_path)}**."
 			await message.channel.send(description)
@@ -1187,7 +1188,7 @@ async def guji_command(ctx: commands.Context):
 		"- `!del_moment <number>` — delete a moment by its number\n"
 		"- `!distillation` — show the distillation paragraph (formed after every 50 moments)\n"
 		"📷 **Images**\n"
-		"- send an image — I'll save it with an ordered filename and describe it\n"
+		"- send an image with a message — I'll read both together and describe it\n"
 		"- `!listpics <page>` — list saved images\n"
 		"- `!favnum <number>` — favourite an image\n"
 		"- `!unfavnum <number>` — unfavourite an image\n"

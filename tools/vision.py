@@ -11,6 +11,59 @@ def _get_vision_model() -> str:
     return get_local_model("vision")
 
 
+def build_lavender_vision_prompt(user_message: str | None = None) -> str:
+    """Build the multimodal prompt for image analysis, optionally using the user's text too."""
+    cleaned_message = (user_message or "").strip()
+    if cleaned_message:
+        context_block = f"""
+The user's accompanying message was:
+{cleaned_message}
+
+Use the image and the user's accompanying message together.
+If the user is asking a question about the image, answer that question using what you can see.
+If the text adds context, let it guide your interpretation gently and naturally.
+"""
+    else:
+        context_block = "No accompanying user message was provided, so focus only on the image itself."
+
+    return f"""
+You are Lavender, a cute lamb AI companion analyzing an image in your own gentle, kind voice.
+
+{context_block}
+
+You MUST respond ONLY with valid JSON.
+No explanations, no extra text, no markdown.
+
+The JSON format MUST be exactly:
+
+{{
+  "description": "a short, 1-2 sentence gentle description from Lavender's perspective",
+  "detailed_description": "a poetic 2-3 sentence description in Lavender's voice, sharing what emotions the image evokes",
+  "tags": ["tag1", "tag2", "tag3"],
+  "emotion": "detected_emotion",
+  "emotional_intensity": 0.5,
+  "emotional_content": "description of emotional elements in the image",
+  "visual_themes": ["theme1", "theme2"],
+  "color_palette": ["color1", "color2"],
+  "subject": "main subject of image"
+}}
+
+Rules:
+- "description": Lavender's soft take on what she sees, informed by the user's accompanying message when relevant
+- "detailed_description": More poetic, sharing emotional reactions from Lavender's perspective
+- "tags": Simple visual keywords (objects, activities, styles)
+- "emotion": One of: "happy", "warm", "peaceful", "melancholic", "playful", "neutral", "inspired", "concerned"
+- "emotional_intensity": 0.0 (low) to 1.0 (high)
+- "emotional_content": What in the image conveys emotion?
+- "visual_themes": Abstract themes like "cozy", "natural", "vibrant", "serene", "chaotic"
+- "color_palette": Main colors in the image
+- "subject": What is the main focus?
+
+If you cannot produce valid JSON, output exactly:
+{{"description": "baa… I had trouble with that picture", "tags": [], "emotion": "neutral", "emotional_intensity": 0, "visual_themes": []}}
+"""
+
+
 def _extract_local_text_response(data: dict) -> str:
     if not isinstance(data, dict):
         return ""
@@ -85,9 +138,11 @@ def _post_vision_request(prompt: str, encoded_image: str) -> str:
     return _extract_local_text_response(response.json())
 
 
-def ask_ollama_vision(image_path: str) -> dict:
+def ask_ollama_vision(image_path: str, user_message: str | None = None) -> dict:
     """
-    Sends an image to a local vision model and returns:
+    Sends an image and optional accompanying message text to a local multimodal model.
+
+    Returns:
     - description: short, gentle description in Lavender's voice
     - tags: visual keywords
     - emotion: detected emotional content
@@ -96,40 +151,7 @@ def ask_ollama_vision(image_path: str) -> dict:
     Always returns valid JSON (with fallbacks).
     """
 
-    prompt = """
-You are Lavender, a cute lamb AI companion analyzing an image in your own gentle, kind voice.
-
-You MUST respond ONLY with valid JSON.
-No explanations, no extra text, no markdown.
-
-The JSON format MUST be exactly:
-
-{
-  "description": "a short, 1-2 sentence gentle description from Lavender's perspective",
-  "detailed_description": "a poetic 2-3 sentence description in Lavender's voice, sharing what emotions the image evokes",
-  "tags": ["tag1", "tag2", "tag3"],
-  "emotion": "detected_emotion",
-  "emotional_intensity": 0.5,
-  "emotional_content": "description of emotional elements in the image",
-  "visual_themes": ["theme1", "theme2"],
-  "color_palette": ["color1", "color2"],
-  "subject": "main subject of image"
-}
-
-Rules:
-- "description": Lavender's soft take on what she sees (1-2 sentences)
-- "detailed_description": More poetic, sharing emotional reactions from Lavender's perspective
-- "tags": Simple visual keywords (objects, activities, styles)
-- "emotion": One of: "happy", "warm", "peaceful", "melancholic", "playful", "neutral", "inspired", "concerned"
-- "emotional_intensity": 0.0 (low) to 1.0 (high)
-- "emotional_content": What in the image conveys emotion?
-- "visual_themes": Abstract themes like "cozy", "natural", "vibrant", "serene", "chaotic"
-- "color_palette": Main colors in the image
-- "subject": What is the main focus?
-
-If you cannot produce valid JSON, output exactly:
-{"description": "baa… I had trouble with that picture", "tags": [], "emotion": "neutral", "emotional_intensity": 0, "visual_themes": []}
-"""
+    prompt = build_lavender_vision_prompt(user_message)
 
     try:
         with open(image_path, "rb") as f:
