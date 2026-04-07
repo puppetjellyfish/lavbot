@@ -751,7 +751,7 @@ class LavenderTUI(App):
         chat.write("!tag create \"name\" — Create a tag")
         chat.write("!tag delete \"name\" — Delete a tag")
         chat.write("!listtag \"name\" — List notes under a tag")
-        chat.write("!scan_tag <count> \"name\" — Save matching messages as notes")
+        chat.write("!scan_tags <count> — Save recent messages that start with existing tags")
         chat.write("!list_tags — List tags and note counts")
         chat.write("")
         chat.write("Short-Term Memory:")

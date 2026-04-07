@@ -43,6 +43,7 @@ from memory import (
 	load_persona_memory_texts,
 	normalize_tag_name,
 	recent_moments,
+	scan_messages_for_tags,
 	replace_persona_memory_by_text,
 	search_notes,
 	set_distillation,
@@ -793,32 +794,39 @@ async def batch_note_command(ctx: commands.Context, limit: int):
 	await ctx.send(f"Saved {added} notes from recent channel messages.")
 
 
-@bot.command(name="scan_tag")
-async def scan_tag_command(ctx: commands.Context, limit: int, *, tag_name: str):
+@bot.command(name="scan_tags")
+async def scan_tags_command(ctx: commands.Context, limit: int):
 	if not is_allowed_user(ctx.author.id):
 		return
 	if limit <= 0:
-		await ctx.send("Usage: !scan_tag <positive_number> \"tag name\"")
+		await ctx.send("Usage: !scan_tags <positive_number>")
 		return
 
-	normalized_tag = await create_tag(tag_name)
-	if not normalized_tag:
-		await ctx.send("Usage: !scan_tag <positive_number> \"tag name\"")
+	tags = await list_tags()
+	if not tags:
+		await ctx.send("No tags exist yet. Create one first with !tag create \"name\".")
 		return
 
-	prefix = normalize_tag_name(tag_name)
-	matches = []
-	async for msg in ctx.channel.history(limit=limit + 10):
+	recent_messages = []
+	scanned = 0
+	async for msg in ctx.channel.history(limit=limit + 25):
 		if msg.id == ctx.message.id or msg.author.bot:
 			continue
-		if normalize_tag_name(msg.content).startswith(prefix):
-			matches.append(msg.content)
-		if len(matches) >= limit:
+		scanned += 1
+		if msg.content.strip():
+			recent_messages.append(msg.content)
+		if scanned >= limit:
 			break
 
-	matches.reverse()
+	recent_messages.reverse()
+	matches, tag_counts = scan_messages_for_tags(recent_messages, tags)
 	added = await add_notes_batch(matches)
-	await ctx.send(f"Saved {added} notes under tag \"{normalized_tag}\".")
+	if added == 0:
+		await ctx.send(f"Scanned {scanned} recent messages and found no matches for your existing tags.")
+		return
+
+	summary = ", ".join(f"{tag} ({count})" for tag, count in tag_counts.items())
+	await ctx.send(f"Scanned {scanned} recent messages and saved {added} tagged note(s): {summary}.")
 
 
 @bot.command(name="listnotes")
@@ -1180,7 +1188,7 @@ async def guji_command(ctx: commands.Context):
 		"- `!tag create \"name\"` — create a note tag\n"
 		"- `!tag delete \"name\"` — delete a note tag\n"
 		"- `!listtag \"name\"` — list notes under a tag\n"
-		"- `!scan_tag <count> \"name\"` — scan recent messages into a tag\n"
+		"- `!scan_tags <count>` — scan recent messages for any existing tag\n"
 		"- `!list_tags` — list tags and note counts\n\n"
 		"🧠 **Short-Term Memory**\n"
 		"- `!analyze_history <limit>` — analyze recent messages and save the report as a moment\n"

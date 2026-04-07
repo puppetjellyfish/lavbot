@@ -39,6 +39,30 @@ def match_note_to_existing_tag(note_text: str, tags: List[str]) -> Optional[str]
 	return max(matches, key=len)
 
 
+def scan_messages_for_tags(message_texts: List[str], tags: List[str]) -> Tuple[List[str], Dict[str, int]]:
+	normalized_tags = []
+	for tag in tags:
+		normalized = normalize_tag_name(tag)
+		if normalized and normalized not in normalized_tags:
+			normalized_tags.append(normalized)
+
+	counts: Dict[str, int] = {tag: 0 for tag in normalized_tags}
+	matched_messages: List[str] = []
+	for raw_text in message_texts:
+		if not isinstance(raw_text, str):
+			continue
+		cleaned = raw_text.strip()
+		if not cleaned:
+			continue
+		matched_tag = match_note_to_existing_tag(cleaned, normalized_tags)
+		if matched_tag is None:
+			continue
+		matched_messages.append(cleaned)
+		counts[matched_tag] += 1
+
+	return matched_messages, {tag: count for tag, count in counts.items() if count > 0}
+
+
 async def _table_exists(db: aiosqlite.Connection, table_name: str) -> bool:
 	cursor = await db.execute(
 		"SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
