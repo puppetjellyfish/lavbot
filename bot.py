@@ -724,13 +724,15 @@ async def on_message(message: discord.Message):
 		return
 
 	update_last_interaction()
+	bot_user = bot.user
+	is_tagged = bool(bot_user and bot_user in message.mentions)
 
 	if message.attachments:
 		attachment = message.attachments[0]
-		if attachment.content_type and attachment.content_type.startswith("image/"):
+		if is_tagged and attachment.content_type and attachment.content_type.startswith("image/"):
 			await prune_old_unfavorited_images()
 			temp_path = await save_incoming_image(attachment)
-			caption_text = message.content.strip()
+			caption_text = message.content.replace(f"<@{bot_user.id}>", "").strip() if bot_user else message.content.strip()
 			async with message.channel.typing():
 				vision_result = ask_ollama_vision(temp_path, user_message=caption_text)
 			description = vision_result.get("detailed_description") or vision_result.get("description") or f"Saved that picture as {os.path.basename(temp_path)}."
@@ -738,8 +740,7 @@ async def on_message(message: discord.Message):
 			await message.channel.send(description)
 			return
 
-	bot_user = bot.user
-	if bot_user and bot_user in message.mentions:
+	if bot_user and is_tagged:
 		cleaned = message.content.replace(f"<@{bot_user.id}>", "").strip() or "hello"
 		async with message.channel.typing():
 			reply = await process_chat_message(cleaned, message.author.id)
